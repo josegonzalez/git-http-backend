@@ -1,3 +1,3 @@
-module github.com/asim/git-http-backend
+module github.com/josegonzalez/git-http-backend
 
 go 1.14

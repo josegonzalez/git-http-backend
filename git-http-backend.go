@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/asim/git-http-backend/server"
+	"github.com/josegonzalez/git-http-backend/server"
 )
 
 func init() {
