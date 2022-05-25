@@ -31,7 +31,7 @@ type Config struct {
 	UploadPack     bool
 	ReceivePack    bool
 	RoutePrefix    string
-	CommandFunc    func(*exec.Cmd)
+	CommandFunc    func(*exec.Cmd, *http.Request)
 }
 
 type HandlerReq struct {
@@ -54,7 +54,7 @@ var (
 		UploadPack:     true,
 		ReceivePack:    true,
 		RoutePrefix:    "",
-		CommandFunc:    func(*exec.Cmd) {},
+		CommandFunc:    func(*exec.Cmd, *http.Request) {},
 	}
 )
 
@@ -145,14 +145,14 @@ func serviceRpc(hr HandlerReq) {
 	args := []string{rpc, "--stateless-rpc", dir}
 	cmd := exec.Command(DefaultConfig.GitBinPath, args...)
 	version := r.Header.Get("Git-Protocol")
-	
+
 	cmd.Dir = dir
 	cmd.Env = env
 	if len(version) != 0 {
 		cmd.Env = append(env, fmt.Sprintf("GIT_PROTOCOL=%s", version))
 	}
-	
-	DefaultConfig.CommandFunc(cmd)
+
+	DefaultConfig.CommandFunc(cmd, r)
 
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -213,7 +213,7 @@ func getInfoRefs(hr HandlerReq) {
 	version := r.Header.Get("Git-Protocol")
 	if access {
 		args := []string{service_name, "--stateless-rpc", "--advertise-refs", "."}
-		refs := gitCommand(dir, version, args...)
+		refs := gitCommand(dir, version, r, args...)
 
 		hdrNocache(w)
 		w.Header().Set("Content-Type", fmt.Sprintf("application/x-git-%s-advertisement", service_name))
@@ -224,7 +224,7 @@ func getInfoRefs(hr HandlerReq) {
 		}
 		w.Write(refs)
 	} else {
-		updateServerInfo(dir)
+		updateServerInfo(dir, r)
 		hdrNocache(w)
 		sendFile("text/plain; charset=utf-8", hr)
 	}
@@ -322,12 +322,12 @@ func hasAccess(r *http.Request, dir string, rpc string, check_content_type bool)
 		return DefaultConfig.UploadPack
 	}
 
-	return getConfigSetting(rpc, dir)
+	return getConfigSetting(rpc, dir, r)
 }
 
-func getConfigSetting(service_name string, dir string) bool {
+func getConfigSetting(service_name string, dir string, r *http.Request) bool {
 	service_name = strings.Replace(service_name, "-", "", -1)
-	setting := getGitConfig("http."+service_name, dir)
+	setting := getGitConfig("http."+service_name, dir, r)
 
 	if service_name == "uploadpack" {
 		return setting != "false"
@@ -336,25 +336,25 @@ func getConfigSetting(service_name string, dir string) bool {
 	return setting == "true"
 }
 
-func getGitConfig(config_name string, dir string) string {
+func getGitConfig(config_name string, dir string, r *http.Request) string {
 	args := []string{"config", config_name}
-	out := string(gitCommand(dir, "", args...))
+	out := string(gitCommand(dir, "", r, args...))
 	return out[0 : len(out)-1]
 }
 
-func updateServerInfo(dir string) []byte {
+func updateServerInfo(dir string, r *http.Request) []byte {
 	args := []string{"update-server-info"}
-	return gitCommand(dir, "", args...)
+	return gitCommand(dir, "", r, args...)
 }
 
-func gitCommand(dir string, version string, args ...string) []byte {
+func gitCommand(dir string, version string, r *http.Request, args ...string) []byte {
 	command := exec.Command(DefaultConfig.GitBinPath, args...)
 	if len(version) > 0 {
 		command.Env = append(os.Environ(), fmt.Sprintf("GIT_PROTOCOL=%s", version))
 	}
 	command.Dir = dir
 
-	DefaultConfig.CommandFunc(command)
+	DefaultConfig.CommandFunc(command, r)
 
 	out, err := command.Output()
 
